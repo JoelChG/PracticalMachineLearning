@@ -19,3 +19,70 @@ The data for this project come from this source: http://groupware.les.inf.puc-ri
 ## What you should submit
 The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases. 
 
+## Assignment
+Libraries are loaded, data sets files are downloaded and read.
+```{r setup, messaage = FALSE, warning = FALSE, cache = TRUE}
+library(tidyverse); library(caret); library(kableExtra);
+Train.url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+Test.url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+if(!file.exists("DataSets/pml-training.csv")){
+download.file(Train.url, destfile = "DataSets/pml-training.csv")
+}
+if(!file.exists("DataSets/pml-testing.csv")){
+download.file(Test.url, "DataSets/pml-testing.csv")
+}
+training <- read.csv("./DataSets/pml-training.csv", header = TRUE)
+testing <- read.csv("./DataSets/pml-testing.csv", header = TRUE)
+```
+
+## Exploratory Data Analysis?
+
+Adjusting the database
+```{r eda, warning = FALSE, message = FALSE, cache = TRUE}
+dim(training)
+names(training)
+train_data <- training[-c(1:7)]
+train_data <- sapply(train_data[, -c(153)], as.numeric)
+train_data <- as.data.frame(train_data)
+#train_data$classe <- as.factor(training$classe)
+```
+
+Data Preprocessing
+
+```{r prepro, cache = TRUE}
+# Removing features with near zero variance
+train_nzv <- nearZeroVar(train_data)
+train_data <- train_data[, -train_nzv]
+
+# Removing highly correlated features
+M <- abs(cor(train_data))
+M[!lower.tri(M)] <- 0
+high_cor_features <- which(M > 0.8, arr.ind = TRUE)
+train_data.new <- train_data[, !apply(M, 2, function(x) any(abs(x) > 0.8, na.rm = TRUE))]
+
+# Removing features with NA values
+train_data.new <- train_data.new[lapply(train_data.new, 
+                                        function(x) sum(is.na(x))/length(x) ) < 0.9 ]
+
+# Adding outcome var
+train_data.new$classe <- training$classe
+train_data.new$classe <- as.factor(train_data.new$classe)
+```
+
+```{r feat-plot}
+fitControl <- trainControl(method = "cv", number = 3)
+```
+
+```{r models}
+gbmFit1 <- train(classe ~ ., data = train_data.new,
+                 method = "gbm", 
+                 trControl = fitControl, 
+                 verbose = FALSE)
+rfFit <- train(classe ~ ., data = train_data.new, 
+               trControl = fitControl,
+               method = "rf")
+```
+
+```{r pred}
+rf_pred <- predict(rfFit, testing)
+```
