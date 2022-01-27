@@ -1,28 +1,64 @@
 ---
-title: "Practical Machine Learning Project"
+title: "Random Forest Prediction Model for the Evaluation of Performance of Unilateral Dumbbell Biceps Curls"
 author: "Joel Chavez Gomez"
-date: "23/1/2022"
-output: html_document
+date: "January 26, 2022"
 theme: readable
+output:
+  html_document:
+    toc: true
+    toc_float: true
+
 ---
-## Data 
-The training data for this project are available here: 
+## Summary
+This project uses a data set from the Human Activity Recognition, which evalueates
+the performance of unilateral dumbbell biceps curl from 6 subjects. the data set
+is divided into a training and test set, and after feature evaluation and preprocessing
+unnecessary features were eliminated and the training data set was divided into
+a training data subset and validation subset. Prediction models were used using Gradient
+Boosting Machine and Random Forests, of which the Random Forest model performed 
+better at predicting the outcomes in the validation data set, with 100% accuracy, 
+according to the validation data set.
 
-https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+## Introduction
+One thing that people regularly do is quantify how  much of a particular activity
+they do, but they rarely quantify how well they do it. In this project, the goal
+is to use data from accelerometers on the belt, forearm, arm, and dumbell
+of 6 participants from the [Human Activity Recognition](http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har#weight_lifting_exercises) Study.
 
-The test data are available here:
+On this study, participants were asked to perform one set of 10 repetitions of
+the Unilateral Dumbbell Biceps Curl in five different fashions:  
+- Exactly according to the specification (Class A)   
+- Throwing the elbows to the front (Class B)    
+- Lifting the dumbbell only halfway (Class C)   
+- Lowering the dumbbell only halfway (Class D)  
+- Throwing the hips to the front (Class E)     
 
-https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+Class A corresponds to the specified execution of the exercise, while the other
+4 classes correspond to common mistakes. Participants were supervised by an
+experienced weight lifter to make sure the execution complied to the manner they
+were supposed to simulate. The exercises were performed by six male participants
+aged between 20-28 years, with little weight lifting experience. 
 
-The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har. If you use the document you create for this class for any purpose please cite them as they have been very generous in allowing their data to be used for this kind of assignment. 
+### Data 
+The training data for this project are available [here](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv)
 
-## What you should submit
-The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases. 
+The test data are available [here](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv)
+The data for this project come from this [source](http://groupware.les.inf.puc-rio.br/har)
 
-## Assignment
-Libraries are loaded, data sets files are downloaded and read.
+### Objective
+The goal of this project is to predict the manner in which the subjects did the
+exercise. This is the "classe" variable in the training set.
+You may use any of the other variables to predict with. You should create a report
+describing how you built your model, how you used cross validation, what you think the expected
+out of sample error is, and why you made the choices you did. You will also use
+your prediction model to predict 20 different test cases. 
+
+## Data Analysis
+Libraries are loaded, the data sets files are downloaded and read into two data 
+frames, `training` for the training data set, and `testing` for the testing data
+set.
 ```{r setup, messaage = FALSE, warning = FALSE, cache = TRUE}
-library(tidyverse); library(caret); library(kableExtra);
+library(tidyverse); library(caret)
 Train.url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
 Test.url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
 if(!file.exists("DataSets/pml-training.csv")){
@@ -35,20 +71,20 @@ training <- read.csv("./DataSets/pml-training.csv", header = TRUE)
 testing <- read.csv("./DataSets/pml-testing.csv", header = TRUE)
 ```
 
-## Exploratory Data Analysis?
-
-Adjusting the database
+## Data Preparation
+The data sets consists of measurements from accelerometers on the belt, forearm,
+arm, and dumbbell of 6 participants, as explained on the introduction. The training
+data set consists of 19622 observations from 160 variables. The first 7 columns
+from our data frame consists of ID variables, so they were removed. Then all other
+variables,except the classification variable, were converted into numeric values.
 ```{r eda, warning = FALSE, message = FALSE, cache = TRUE}
 dim(training)
-names(training)
 train_data <- training[-c(1:7)]
 train_data <- sapply(train_data[, -c(153)], as.numeric)
 train_data <- as.data.frame(train_data)
-#train_data$classe <- as.factor(training$classe)
 ```
-
-Data Preprocessing
-
+Variables that were highly correlated, with near zero variance or with an NA
+proportion greater than 80% were removed from the training data frame.
 ```{r prepro, cache = TRUE}
 # Removing features with near zero variance
 train_nzv <- nearZeroVar(train_data)
@@ -58,31 +94,87 @@ train_data <- train_data[, -train_nzv]
 M <- abs(cor(train_data))
 M[!lower.tri(M)] <- 0
 high_cor_features <- which(M > 0.8, arr.ind = TRUE)
-train_data.new <- train_data[, !apply(M, 2, function(x) any(abs(x) > 0.8, na.rm = TRUE))]
+train_data <- train_data[, !apply(M, 2,
+                                  function(x) any(abs(x) > 0.8, na.rm = TRUE))]
 
 # Removing features with NA values
-train_data.new <- train_data.new[lapply(train_data.new, 
-                                        function(x) sum(is.na(x))/length(x) ) < 0.9 ]
+train_data <- train_data[lapply(train_data, 
+                                function(x) sum(is.na(x))/length(x) ) < 0.9 ]
 
-# Adding outcome var
-train_data.new$classe <- training$classe
-train_data.new$classe <- as.factor(train_data.new$classe)
+# Adding classification var
+train_data$classe <- training$classe
+train_data$classe <- as.factor(train_data$classe)
 ```
 
-```{r feat-plot}
+The training data set was divided into two different data sets. The models will
+be build on the `train_data` data set, and the obtained models will be tested on 
+the `val_data` validation data set.
+
+```{r subsets, cache = TRUE}
+set.seed(125)
+inTrain <- createDataPartition(y = train_data$classe, p = 0.8, list = FALSE)
+train_data <- train_data[inTrain, ]
+val_data <- train_data[-inTrain, ]
+```
+
+3-fold cross validation will be used for model fitting.
+
+```{r cross-val, cache = TRUE}
 fitControl <- trainControl(method = "cv", number = 3)
 ```
 
-```{r models}
-gbmFit1 <- train(classe ~ ., data = train_data.new,
+## Model Creation
+A **Gradient Boosting Machine** model and a **Random Forest** model were created.
+
+```{r models, cache = TRUE}
+gbmFit1 <- train(classe ~ ., data = train_data,
                  method = "gbm", 
                  trControl = fitControl, 
                  verbose = FALSE)
-rfFit <- train(classe ~ ., data = train_data.new, 
+rfFit <- train(classe ~ ., data = train_data, 
                trControl = fitControl,
                method = "rf")
 ```
 
-```{r pred}
-rf_pred <- predict(rfFit, testing)
+Below are the plots of bot models
+```{r plots, fig.align='center', fig.width=8, fig.height=4, message = FALSE, warning = FALSE}
+library(gridExtra)
+grid.arrange(plot(gbmFit1), plot(rfFit), nrow = 1)
 ```
+## Model Validation
+Both models were tested on the validation data set, and confusion matrices were 
+created to compare their accuracy.
+
+```{r pred, cache = TRUE}
+gbm_pred <- predict(gbmFit1, val_data)
+rf_pred <- predict(rfFit, val_data)
+gbm_cm <- confusionMatrix(gbm_pred, val_data$classe)
+gbm_cm
+
+rf_cm <- confusionMatrix(rf_pred, val_data$classe)
+rf_cm
+```
+## Model Testing
+
+The Out of Sample Error for the Gradient Boosting Machine model was 0.281, with 
+an accuracy of 0.9719, while the Random Forest Model had an accuracy of 1 and an
+Out of Sample error of 0, according to the validation data set.
+
+```{r ooserror, echo  =FALSE}
+OoSError <- c(1 - 0.9719, 0)
+Model <- c("GBM", "RF")
+Accuracy <- c(0.9719, 1)
+data.frame(Model, Accuracy, OoSError)
+```
+It appears that the Random Forest model had the best accuracy, correctly predicting
+100% of the validation data set classes, so we will use this model on the testing
+data set. The predictions appear below.
+
+```{r testing, cache  = TRUE}
+rf_test <- predict(rfFit, testing)
+rf_test
+```
+
+## Conclusion
+The Random Forest Model was better to predict the outcome in the validation data
+set.
